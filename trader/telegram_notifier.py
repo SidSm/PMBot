@@ -3,7 +3,9 @@ Telegram notifier for sending alerts and updates
 """
 
 import asyncio
+import threading
 from typing import Optional
+from html import escape
 from telegram import Bot
 from telegram.error import TelegramError
 
@@ -18,16 +20,34 @@ class TelegramNotifier:
         self.bot = None
         self.chat_id = config.TELEGRAM_CHAT_ID
         self.enabled = False
+        self.loop = None
+        self.loop_thread = None
 
         if config.TELEGRAM_BOT_TOKEN and self.chat_id:
             try:
                 self.bot = Bot(token=config.TELEGRAM_BOT_TOKEN)
+                self._start_event_loop()
                 self.enabled = True
                 print("✓ Telegram notifications enabled")
             except Exception as e:
                 print(f"⚠️  Telegram initialization failed: {e}")
         else:
             print("⚠️  Telegram not configured (missing token or chat_id)")
+
+    def _start_event_loop(self):
+        """Start a dedicated event loop for Telegram in separate thread"""
+        def run_loop():
+            self.loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(self.loop)
+            self.loop.run_forever()
+
+        self.loop_thread = threading.Thread(target=run_loop, daemon=True)
+        self.loop_thread.start()
+
+        # Wait for loop to be ready
+        import time
+        while self.loop is None:
+            time.sleep(0.01)
 
     def send_message(self, message: str):
         """
@@ -36,12 +56,17 @@ class TelegramNotifier:
         Args:
             message: Message text to send
         """
-        if not self.enabled:
+        if not self.enabled or not self.loop:
             return
 
         try:
-            # Run async send in sync context
-            asyncio.run(self._send_async(message))
+            # Schedule coroutine in the dedicated event loop
+            future = asyncio.run_coroutine_threadsafe(
+                self._send_async(message),
+                self.loop
+            )
+            # Wait for completion with timeout
+            future.result(timeout=5)
         except Exception as e:
             print(f"Telegram send error: {e}")
 
@@ -67,11 +92,12 @@ class TelegramNotifier:
             return
 
         dry_run_tag = "🧪 DRY RUN" if details.get('dry_run') else "✅ LIVE"
+        market_title = escape(details.get('market_title', 'Unknown')[:100])
 
         message = f"""
 {dry_run_tag} <b>Trade Executed</b>
 
-<b>Market:</b> {details.get('market_title', 'Unknown')[:100]}
+<b>Market:</b> {market_title}
 <b>Side:</b> {details.get('side')}
 <b>Size:</b> ${details.get('size', 0):,.2f}
 <b>Price:</b> {details.get('price', 0):.4f}
@@ -91,14 +117,17 @@ class TelegramNotifier:
         if not config.TELEGRAM['notify_rejections']:
             return
 
+        market_title = escape(trade_info.get('market_title', 'Unknown')[:100])
+        reason_escaped = escape(reason)
+
         message = f"""
 ❌ <b>Trade Rejected</b>
 
-<b>Market:</b> {trade_info.get('market_title', 'Unknown')[:100]}
+<b>Market:</b> {market_title}
 <b>Side:</b> {trade_info.get('side')}
 <b>Size:</b> ${trade_info.get('size', 0):,.2f}
 
-<b>Reason:</b> {reason}
+<b>Reason:</b> {reason_escaped}
 """
         self.send_message(message.strip())
 
@@ -212,3 +241,8 @@ class TelegramNotifier:
 <b>Trading session ended.</b>
 """
         self.send_message(message.strip())
+
+    def __del__(self):
+        """Cleanup event loop on deletion"""
+        if self.loop:
+            self.loop.call_soon_threadsafe(self.loop.stop)

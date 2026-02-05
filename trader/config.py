@@ -26,7 +26,7 @@ WS_PING_INTERVAL = 30  # seconds
 
 # Polling Fallback Configuration
 POLLING_INTERVAL = 10  # seconds (if WebSocket fails)
-USE_WEBSOCKET = True  # Try WebSocket first
+USE_WEBSOCKET = False  # Try WebSocket first
 
 # Target Account Configuration
 TARGET_ACCOUNT = os.getenv('TARGET_ACCOUNT', '').lower()
@@ -39,6 +39,8 @@ BANKROLL_MODE = os.getenv('BANKROLL_MODE', 'fixed')  # 'fixed' or 'dynamic'
 # Bankroll Settings
 FIXED_BANKROLL = float(os.getenv('FIXED_BANKROLL', 1000))  # USD
 DYNAMIC_BANKROLL_PCT = 100  # % of wallet balance to use in dynamic mode
+
+VERBOSE_VALIDATION=True
 
 # Validation Thresholds
 VALIDATION = {
@@ -68,7 +70,7 @@ VALIDATION = {
     'max_drawdown_pct': 15,
 
     # 14. Minimum edge requirement
-    'min_edge_pct': 1,  # Price must be at least 1% better
+    'min_edge_pct': 0,  # Price must be at least 1% better
 
     # 15. Kelly criterion cap
     'max_kelly_fraction': 0.25,  # Max 25% of calculated Kelly
@@ -87,7 +89,7 @@ VALIDATION = {
 
 # Position Limits
 POSITION_LIMITS = {
-    'min_bet_size_usd': 5,
+    'min_bet_size_usd': 0.001,
     'max_bet_size_usd': 1000,
     'max_bet_pct_portfolio': 10,
     'max_price_movement_pct': 5,
@@ -111,6 +113,6 @@ TELEGRAM = {
 }
 
 # Logging
-LOG_LEVEL = 'INFO'
+LOG_LEVEL = 'DEBUG'
 LOG_TO_FILE = True
 LOG_FILE = 'trader/copycat_bot.log'

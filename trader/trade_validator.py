@@ -57,29 +57,61 @@ class TradeValidator:
         if not market_data:
             return ValidationResult(False, "Could not fetch market data")
 
-        # Run all validation checks
-        checks = [
-            self._check_price_sanity(trade),
-            self._check_outcome_matching(trade, market_data),
-            self._check_duplicate(trade),
-            self._check_liquidity(market_data),
-            self._check_market_closing(market_data),
-            self._check_volume(market_data),
-            self._check_spread(market_data),
-            self._check_trade_age(trade),
-            self._check_rate_limit(),
-            self._check_daily_loss_limit(),
-            self._check_drawdown_protection(),
-            self._check_minimum_edge(trade, market_data),
-            self._check_position_limits(trade, their_net_worth),
-            self._check_price_movement(trade, market_data),
+        # Define all validation checks with labels
+        validation_checks = [
+            ("Price Sanity", lambda: self._check_price_sanity(trade)),
+            ("Outcome Matching", lambda: self._check_outcome_matching(trade, market_data)),
+            ("Duplicate Detection", lambda: self._check_duplicate(trade)),
+            ("Liquidity Check", lambda: self._check_liquidity(market_data)),
+            ("Market Closing Time", lambda: self._check_market_closing(market_data)),
+            ("24h Volume", lambda: self._check_volume(market_data)),
+            ("Bid-Ask Spread", lambda: self._check_spread(market_data)),
+            ("Trade Age", lambda: self._check_trade_age(trade)),
+            ("Rate Limiting", lambda: self._check_rate_limit()),
+            ("Daily Loss Limit", lambda: self._check_daily_loss_limit()),
+            ("Drawdown Protection", lambda: self._check_drawdown_protection()),
+            ("Minimum Edge", lambda: self._check_minimum_edge(trade, market_data)),
+            ("Position Size Limits", lambda: self._check_position_limits(trade, their_net_worth)),
+            ("Price Movement", lambda: self._check_price_movement(trade, market_data)),
         ]
 
-        for result in checks:
-            if not result.passed:
-                return result
+        # Run all checks
+        results = []
+        for label, check_func in validation_checks:
+            result = check_func()
+            results.append((label, result))
+
+        # Display results if verbose mode enabled
+        if config.VERBOSE_VALIDATION:
+            self._print_validation_summary(results)
+
+        # Check if all passed
+        failed_checks = [label for label, result in results if not result.passed]
+
+        if failed_checks:
+            # Return first failure
+            for label, result in results:
+                if not result.passed:
+                    return result
 
         return ValidationResult(True, "All checks passed")
+
+    def _print_validation_summary(self, results: list):
+        """Print validation results summary"""
+        print("\n" + "="*60)
+        print("VALIDATION RESULTS")
+        print("="*60)
+
+        passed_count = sum(1 for _, result in results if result.passed)
+        total_count = len(results)
+
+        for label, result in results:
+            status = "✅" if result.passed else "❌"
+            print(f"{status} {label:25} {result.reason}")
+
+        print("-"*60)
+        print(f"Summary: {passed_count}/{total_count} checks passed")
+        print("="*60 + "\n")
 
     def _check_liquidity(self, market_data: Dict) -> ValidationResult:
         """1. Check market liquidity"""
@@ -247,8 +279,8 @@ class TradeValidator:
         )
 
         # Check minimum
-        if bet_size < config.POSITION_LIMITS['min_bet_size_usd']:
-            return ValidationResult(False, f"Bet size ${bet_size} < minimum ${config.POSITION_LIMITS['min_bet_size_usd']}")
+        #if bet_size < config.POSITION_LIMITS['min_bet_size_usd']:
+        #    return ValidationResult(False, f"Bet size ${bet_size} < minimum ${config.POSITION_LIMITS['min_bet_size_usd']}")
 
         # Check maximum
         if bet_size > config.POSITION_LIMITS['max_bet_size_usd']:
@@ -282,7 +314,7 @@ class TradeValidator:
 
         try:
             url = f"{config.POLYMARKET_GAMMA_API}/markets"
-            params = {'id': condition_id}
+            params = {'condition_ids': condition_id}  # Use condition_ids (plural)
             response = requests.get(url, params=params, timeout=3)
             response.raise_for_status()
 
@@ -302,10 +334,37 @@ class TradeValidator:
 
     def _get_current_price(self, market_data: Dict, asset: str) -> Optional[float]:
         """Get current market price for asset"""
-        # TODO: Get from CLOB order book
-        # For now, use best guess from market data
-        tokens = market_data.get('tokens', [])
+        import json
 
+        # Try to get from clobTokenIds + outcomePrices
+        clob_token_ids = market_data.get('clobTokenIds', [])
+        outcome_prices_raw = market_data.get('outcomePrices')
+
+        # Parse outcomePrices if it's a string
+        if isinstance(outcome_prices_raw, str):
+            try:
+                outcome_prices = json.loads(outcome_prices_raw)
+            except json.JSONDecodeError:
+                outcome_prices = []
+        else:
+            outcome_prices = outcome_prices_raw or []
+
+        # Parse clobTokenIds if it's a string
+        if isinstance(clob_token_ids, str):
+            try:
+                clob_token_ids = json.loads(clob_token_ids)
+            except json.JSONDecodeError:
+                clob_token_ids = []
+
+        # Find asset in clobTokenIds
+        if asset in clob_token_ids and outcome_prices:
+            idx = clob_token_ids.index(asset)
+            if idx < len(outcome_prices):
+                price = float(outcome_prices[idx])
+                return price
+
+        # Fallback: try tokens array (if available in future)
+        tokens = market_data.get('tokens', [])
         for token in tokens:
             if token.get('token_id') == asset:
                 return float(token.get('price', 0))

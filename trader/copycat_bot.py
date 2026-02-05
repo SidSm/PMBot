@@ -190,7 +190,9 @@ class CopycatBot:
             validation_result = self.validator.validate_trade(trade, self.target_net_worth)
 
             if not validation_result.passed:
-                print(f"❌ Trade rejected: {validation_result.reason}")
+                if not config.VERBOSE_VALIDATION:
+                    # Only print rejection if not already shown in summary
+                    print(f"❌ Trade rejected: {validation_result.reason}")
 
                 self.notifier.notify_trade_rejected(
                     trade_info={
@@ -202,7 +204,8 @@ class CopycatBot:
                 )
                 return
 
-            print(f"✓ Validation passed: {validation_result.reason}")
+            if not config.VERBOSE_VALIDATION:
+                print(f"✓ Validation passed: {validation_result.reason}")
 
             # Calculate position size
             their_bet_usd = trade.size * trade.price
