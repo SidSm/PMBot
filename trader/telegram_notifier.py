@@ -1,0 +1,214 @@
+"""
+Telegram notifier for sending alerts and updates
+"""
+
+import asyncio
+from typing import Optional
+from telegram import Bot
+from telegram.error import TelegramError
+
+import trader.config as config
+
+
+class TelegramNotifier:
+    """Sends notifications via Telegram bot"""
+
+    def __init__(self):
+        """Initialize Telegram bot"""
+        self.bot = None
+        self.chat_id = config.TELEGRAM_CHAT_ID
+        self.enabled = False
+
+        if config.TELEGRAM_BOT_TOKEN and self.chat_id:
+            try:
+                self.bot = Bot(token=config.TELEGRAM_BOT_TOKEN)
+                self.enabled = True
+                print("✓ Telegram notifications enabled")
+            except Exception as e:
+                print(f"⚠️  Telegram initialization failed: {e}")
+        else:
+            print("⚠️  Telegram not configured (missing token or chat_id)")
+
+    def send_message(self, message: str):
+        """
+        Send a message via Telegram
+
+        Args:
+            message: Message text to send
+        """
+        if not self.enabled:
+            return
+
+        try:
+            # Run async send in sync context
+            asyncio.run(self._send_async(message))
+        except Exception as e:
+            print(f"Telegram send error: {e}")
+
+    async def _send_async(self, message: str):
+        """Async message sender"""
+        try:
+            await self.bot.send_message(
+                chat_id=self.chat_id,
+                text=message,
+                parse_mode='HTML'
+            )
+        except TelegramError as e:
+            print(f"Telegram API error: {e}")
+
+    def notify_trade_executed(self, details: dict):
+        """
+        Notify about executed trade
+
+        Args:
+            details: Trade execution details
+        """
+        if not config.TELEGRAM['notify_trades']:
+            return
+
+        dry_run_tag = "🧪 DRY RUN" if details.get('dry_run') else "✅ LIVE"
+
+        message = f"""
+{dry_run_tag} <b>Trade Executed</b>
+
+<b>Market:</b> {details.get('market_title', 'Unknown')[:100]}
+<b>Side:</b> {details.get('side')}
+<b>Size:</b> ${details.get('size', 0):,.2f}
+<b>Price:</b> {details.get('price', 0):.4f}
+
+<b>Order ID:</b> <code>{details.get('order_id', 'N/A')}</code>
+"""
+        self.send_message(message.strip())
+
+    def notify_trade_rejected(self, trade_info: dict, reason: str):
+        """
+        Notify about rejected trade
+
+        Args:
+            trade_info: Trade information
+            reason: Rejection reason
+        """
+        if not config.TELEGRAM['notify_rejections']:
+            return
+
+        message = f"""
+❌ <b>Trade Rejected</b>
+
+<b>Market:</b> {trade_info.get('market_title', 'Unknown')[:100]}
+<b>Side:</b> {trade_info.get('side')}
+<b>Size:</b> ${trade_info.get('size', 0):,.2f}
+
+<b>Reason:</b> {reason}
+"""
+        self.send_message(message.strip())
+
+    def notify_circuit_breaker(self, reason: str, stats: dict):
+        """
+        Notify about circuit breaker activation
+
+        Args:
+            reason: Circuit breaker reason
+            stats: Current portfolio stats
+        """
+        if not config.TELEGRAM['notify_circuit_breakers']:
+            return
+
+        message = f"""
+🚨 <b>CIRCUIT BREAKER ACTIVATED</b>
+
+<b>Reason:</b> {reason}
+
+<b>Portfolio Status:</b>
+• Net Worth: ${stats.get('net_worth', 0):,.2f}
+• Daily PnL: ${stats.get('daily_pnl', 0):,.2f}
+• Drawdown: {stats.get('drawdown_pct', 0):.1f}%
+• Total PnL: ${stats.get('total_pnl', 0):,.2f}
+
+<b>Trading paused until conditions improve.</b>
+"""
+        self.send_message(message.strip())
+
+    def notify_error(self, error_msg: str):
+        """
+        Notify about system error
+
+        Args:
+            error_msg: Error message
+        """
+        if not config.TELEGRAM['notify_errors']:
+            return
+
+        message = f"""
+⚠️ <b>System Error</b>
+
+<code>{error_msg}</code>
+"""
+        self.send_message(message.strip())
+
+    def notify_daily_summary(self, stats: dict):
+        """
+        Send daily performance summary
+
+        Args:
+            stats: Portfolio statistics
+        """
+        if not config.TELEGRAM['notify_daily_summary']:
+            return
+
+        message = f"""
+📊 <b>Daily Summary</b>
+
+<b>Portfolio:</b>
+• Net Worth: ${stats.get('net_worth', 0):,.2f}
+• Available: ${stats.get('available_capital', 0):,.2f}
+• Open Positions: {stats.get('open_positions', 0)}
+
+<b>Performance:</b>
+• Total PnL: ${stats.get('total_pnl', 0):,.2f}
+• Daily PnL: ${stats.get('daily_pnl', 0):,.2f}
+• Drawdown: {stats.get('drawdown_pct', 0):.1f}%
+
+<b>Activity:</b>
+• Total Trades: {stats.get('total_trades', 0)}
+"""
+        self.send_message(message.strip())
+
+    def notify_bot_started(self, target_account: str, config_summary: dict):
+        """
+        Notify when bot starts
+
+        Args:
+            target_account: Account being copied
+            config_summary: Configuration summary
+        """
+        dry_run = "🧪 DRY RUN MODE" if config.DRY_RUN else "✅ LIVE TRADING"
+
+        message = f"""
+🤖 <b>Copycat Bot Started</b>
+
+<b>Mode:</b> {dry_run}
+<b>Target:</b> <code>{target_account}</code>
+<b>Bankroll:</b> ${config_summary.get('bankroll', 0):,.2f} ({config_summary.get('mode', 'fixed')})
+
+<b>Monitoring for trades...</b>
+"""
+        self.send_message(message.strip())
+
+    def notify_bot_stopped(self, final_stats: dict):
+        """
+        Notify when bot stops
+
+        Args:
+            final_stats: Final portfolio statistics
+        """
+        message = f"""
+🛑 <b>Copycat Bot Stopped</b>
+
+<b>Final Stats:</b>
+• Net Worth: ${final_stats.get('net_worth', 0):,.2f}
+• Total PnL: ${final_stats.get('total_pnl', 0):,.2f}
+• Total Trades: {final_stats.get('total_trades', 0)}
+
+<b>Trading session ended.</b>
+"""
+        self.send_message(message.strip())
