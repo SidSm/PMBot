@@ -14,6 +14,7 @@ from trader.trade_validator import TradeValidator
 from trader.order_executor import OrderExecutor
 from trader.risk_manager import RiskManager, CircuitBreakerException
 from trader.telegram_notifier import TelegramNotifier
+from trader.wallet_tracker import WalletTracker
 
 
 class CopycatBot:
@@ -42,6 +43,13 @@ class CopycatBot:
 
         print("Initializing components...")
 
+        # Initialize wallet tracker
+        self.wallet_tracker = WalletTracker()
+
+        # Get wallet balances at startup
+        print("\n📊 Fetching wallet balances...")
+        self._fetch_wallet_balances()
+
         self.position_manager = PositionManager()
         self.position_manager.initialize(initial_capital)
 
@@ -55,52 +63,60 @@ class CopycatBot:
             on_trade_callback=self.on_trade_detected
         )
 
-        # Calculate target's net worth
-        self.target_net_worth = self._estimate_target_net_worth()
-
-        print(f"✓ All components initialized")
-        print(f"✓ Estimated target net worth: ${self.target_net_worth:,.2f}\n")
+        print(f"✓ All components initialized\n")
 
         # Setup signal handlers
         signal.signal(signal.SIGINT, self._signal_handler)
         signal.signal(signal.SIGTERM, self._signal_handler)
 
-    def _estimate_target_net_worth(self) -> float:
-        """
-        Estimate target account's current net worth
+    def _fetch_wallet_balances(self):
+        """Fetch and display wallet balances for both accounts"""
 
-        Returns:
-            Estimated net worth in USD
-        """
-        try:
-            # Fetch their current positions
-            url = f"{config.POLYMARKET_DATA_API}/positions"
-            params = {'user': self.target_account, 'limit': 100}
-            response = requests.get(url, params=params, timeout=5)
-            response.raise_for_status()
+        # Get target account balance
+        print(f"\n🎯 Target Account: {self.target_account}")
+        target_summary = self.wallet_tracker.get_wallet_summary(self.target_account)
 
-            positions = response.json()
+        if target_summary['total_net_worth'] is not None:
+            self.target_net_worth = target_summary['total_net_worth']
+            print(f"  💰 USDC Balance: ${target_summary['usdc_balance']:,.2f}")
+            print(f"  📈 Open Positions: ${target_summary['positions_value']:,.2f}")
+            print(f"  💵 Realized PnL: ${target_summary['realized_pnl']:,.2f}")
+            print(f"  🏆 Total Net Worth: ${target_summary['total_net_worth']:,.2f}")
+        else:
+            print(f"  ⚠️  Could not fetch balance, using default estimate")
+            self.target_net_worth = config.TARGET_INITIAL_CAPITAL
+            print(f"  🏆 Estimated Net Worth: ${self.target_net_worth:,.2f}")
 
-            # Calculate total current value
-            total_value = sum(float(pos.get('currentValue', 0)) for pos in positions)
+        # Get our wallet balance (if we have private key)
+        if config.POLYMARKET_PRIVATE_KEY and not config.DRY_RUN:
+            try:
+                from eth_account import Account
+                our_address = Account.from_key(config.POLYMARKET_PRIVATE_KEY).address
 
-            # Add closed PnL
-            url = f"{config.POLYMARKET_DATA_API}/closed-positions"
-            response = requests.get(url, params=params, timeout=5)
-            response.raise_for_status()
+                print(f"\n💼 Our Account (EOA): {our_address}")
+                our_summary = self.wallet_tracker.get_wallet_summary(our_address, try_find_proxy=True)
 
-            closed_positions = response.json()
-            realized_pnl = sum(float(pos.get('realizedPnl', 0)) for pos in closed_positions)
+                if our_summary.get('proxy_address'):
+                    print(f"  🔗 Proxy Wallet: {our_summary['proxy_address']}")
 
-            # Estimate: current value of positions + realized PnL + base capital
-            estimated_net_worth = total_value + realized_pnl + config.TARGET_INITIAL_CAPITAL
+                if our_summary['total_net_worth'] is not None:
+                    print(f"  💰 USDC Balance: ${our_summary['usdc_balance']:,.2f}")
+                    print(f"  📈 Open Positions: ${our_summary['positions_value']:,.2f}")
+                    print(f"  💵 Realized PnL: ${our_summary['realized_pnl']:,.2f}")
+                    print(f"  🏆 Total Net Worth: ${our_summary['total_net_worth']:,.2f}")
 
-            return max(estimated_net_worth, config.TARGET_INITIAL_CAPITAL)
+                    # Update bankroll if dynamic mode
+                    if config.BANKROLL_MODE == 'dynamic':
+                        self.initial_capital = our_summary['total_net_worth']
+                        print(f"  ℹ️  Dynamic mode: Using actual net worth as bankroll")
+                else:
+                    print(f"  ⚠️  Could not fetch balance")
 
-        except Exception as e:
-            print(f"⚠️  Could not estimate target net worth: {e}")
-            print(f"Using default: ${config.TARGET_INITIAL_CAPITAL:,.2f}")
-            return config.TARGET_INITIAL_CAPITAL
+            except Exception as e:
+                print(f"  ⚠️  Could not fetch our wallet balance: {e}")
+        else:
+            print(f"\n💼 Our Account: {'DRY RUN MODE' if config.DRY_RUN else 'No private key'}")
+            print(f"  🏆 Configured Bankroll: ${self.initial_capital:,.2f}")
 
     def start(self):
         """Start the bot"""

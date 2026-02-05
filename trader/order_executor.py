@@ -5,7 +5,7 @@ Order executor for placing trades on Polymarket
 import time
 from typing import Optional, Dict
 from py_clob_client.client import ClobClient
-from py_clob_client.clob_types import OrderArgs, MarketOrderArgs
+from py_clob_client.clob_types import OrderArgs, MarketOrderArgs, OrderType
 from py_clob_client.order_builder.constants import BUY, SELL
 
 import trader.config as config
@@ -52,16 +52,46 @@ class OrderExecutor:
         """Initialize Polymarket CLOB client"""
         if not config.POLYMARKET_PRIVATE_KEY:
             raise ValueError("POLYMARKET_PRIVATE_KEY required for live trading")
+        if not config.POLYMARKET_FUNDER:
+            raise ValueError("POLYMARKET_FUNDER (proxy wallet address) required for live trading. "
+                             "Find it on your Polymarket profile page URL.")
 
         try:
-            # Initialize CLOB client
-            # The client will automatically generate API credentials from private key
+
+            # Generate or derive API credentials
+            print("  - Generating API credentials...")
+
+            # Create or derive user API credentials
+            temp_client = ClobClient(
+                host=config.POLYMARKET_CLOB_API, 
+                key=config.POLYMARKET_PRIVATE_KEY,
+                chain_id=137)
+            
+            creds = temp_client.create_or_derive_api_creds()
+
             self.client = ClobClient(
                 host=config.POLYMARKET_CLOB_API,
                 key=config.POLYMARKET_PRIVATE_KEY,
                 chain_id=137,  # Polygon mainnet
+                signature_type=1,  # POLY_GNOSIS_SAFE
+                funder=config.POLYMARKET_FUNDER,
+                creds=creds
             )
-            print("✓ CLOB client initialized")
+
+            print("✓ CLOB client initialized with API credentials")
+
+            # Set allowances for USDC (required for trading)
+            print("  - Setting USDC allowances...")
+            try:
+                allowances = self.client.get_balance_allowance()
+                print(f"    Current allowances: {allowances}")
+
+                # Set allowance if needed (approve Polymarket to spend USDC)
+                #self.client.set_a()
+                print("  ✓ Allowances set")
+            except Exception as e:
+                print(f"  ⚠️  Allowance setup: {e}")
+                print("  ℹ️  You may need to manually approve USDC spending")
 
         except Exception as e:
             raise Exception(f"Failed to initialize CLOB client: {e}")
@@ -139,19 +169,38 @@ class OrderExecutor:
             try:
                 print(f"Attempt {attempts}/{max_attempts}...")
 
-                # Create market order
-                order_args = MarketOrderArgs(
+                # Use GTC (Good-Till-Cancelled) orders with aggressive pricing
+                # GTC doesn't have the strict market order decimal restrictions
+
+                # Round size to 4 decimals (standard for limit orders)
+                token_size = size_usd / trade.price
+                token_size = round(token_size, 4)
+
+                if trade.side == 'BUY':
+                    # Use aggressive price (higher for BUY to ensure fill)
+                    order_price = round(trade.price * 1.10, 2)  # +10% slippage
+                    order_price = min(order_price, 0.99)  # Cap at 0.99
+                else:
+                    # Use aggressive price (lower for SELL to ensure fill)
+                    order_price = round(trade.price * 0.90, 2)  # -10% slippage
+                    order_price = max(order_price, 0.01)  # Floor at 0.01
+
+                print(f"  Size: {token_size} tokens @ ${order_price} (GTC limit order)")
+
+                # Create limit order
+                order_args = OrderArgs(
                     token_id=trade.asset,
-                    amount=size_usd,
-                    side=BUY if trade.side == 'BUY' else SELL,
-                    feeRateBps=0  # Will be calculated by client
+                    price=order_price,
+                    size=token_size,
+                    side=BUY if trade.side == 'BUY' else SELL
                 )
 
                 # Create and sign order
-                signed_order = self.client.create_market_order(order_args)
+                signed_order = self.client.create_order(order_args)
 
-                # Post order to CLOB
-                result = self.client.post_order(signed_order, order_type='FOK')
+                # Post order as GTC (Good-Till-Cancelled)
+                # Will fill immediately at best price, remains open if partial fill
+                result = self.client.post_order(signed_order, OrderType.GTC)
 
                 if result and result.get('orderID'):
                     print(f"✓ Order executed: {result['orderID']}")

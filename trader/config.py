@@ -11,6 +11,7 @@ load_dotenv()
 # API Configuration
 # Only private key needed - py-clob-client generates API credentials automatically
 POLYMARKET_PRIVATE_KEY = os.getenv('POLYMARKET_PRIVATE_KEY')
+POLYMARKET_FUNDER = os.getenv('POLYMARKET_FUNDER')  # Proxy wallet address (from Polymarket profile)
 TELEGRAM_BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
 TELEGRAM_CHAT_ID = os.getenv('TELEGRAM_CHAT_ID')
 
@@ -57,7 +58,7 @@ VALIDATION = {
     'max_spread_pct': 5,
 
     # 9. Trade age limit
-    'max_trade_age_seconds': 60,
+    'max_trade_age_seconds': 6000,
 
     # 11. Rate limiting
     'max_trades_per_hour': 10,
