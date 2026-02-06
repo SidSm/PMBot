@@ -201,6 +201,8 @@ PMBot/
 
 This software is provided for educational and research purposes. Trading on prediction markets carries financial risk. The authors are not responsible for any losses incurred through the use of this tool. Always do your own research and never risk more than you can afford to lose.
 
+This software was mostly vibe-coded, though it was (and still is being) tested on real trading.
+
 ---
 
 ## License
