@@ -50,7 +50,7 @@ class CopycatBot:
         print("\n📊 Fetching wallet balances...")
         self._fetch_wallet_balances()
 
-        self.position_manager = PositionManager()
+        self.position_manager = PositionManager(self.wallet_tracker)
         self.position_manager.initialize(initial_capital)
 
         self.validator = TradeValidator(self.position_manager)
@@ -88,10 +88,9 @@ class CopycatBot:
             print(f"  🏆 Estimated Net Worth: ${self.target_net_worth:,.2f}")
 
         # Get our wallet balance (if we have private key)
-        if config.POLYMARKET_PRIVATE_KEY and not config.DRY_RUN:
+        if config.POLYMARKET_FUNDER and not config.DRY_RUN:
             try:
-                from eth_account import Account
-                our_address = Account.from_key(config.POLYMARKET_PRIVATE_KEY).address
+                our_address = config.POLYMARKET_FUNDER
 
                 print(f"\n💼 Our Account (EOA): {our_address}")
                 our_summary = self.wallet_tracker.get_wallet_summary(our_address, try_find_proxy=True)
@@ -191,7 +190,7 @@ class CopycatBot:
         print(f"Market: {trade.market_title}")
         print(f"Side: {trade.side}")
         print(f"Size: {trade.size} @ {trade.price}")
-        print(f"Outcome: {trade.outcome}")
+        print(f"Betting on outcome: {trade.outcome}")
         print("="*60)
 
         try:
@@ -200,6 +199,18 @@ class CopycatBot:
                 print(f"\n🚨 Circuit breaker active: {self.risk_manager.circuit_breaker_reason}")
                 print("Trade skipped")
                 return
+            
+            # Calculate position size
+            their_bet_usd = trade.size * trade.price
+            our_bet_usd = self.position_manager.calculate_position_size(
+                their_bet_usd,
+                self.target_net_worth
+            )
+
+            print(f"\n💰 Position Sizing:")
+            print(f"  Their bet: ${their_bet_usd:,.2f} ({their_bet_usd/self.target_net_worth*100:.2f}% of net worth)")
+            print(f"  Our bet: ${our_bet_usd:,.2f} ({our_bet_usd/self.position_manager.get_net_worth()*100:.2f}% of net worth)")
+
 
             # Validate trade
             print("\n🔍 Validating trade...")
@@ -222,17 +233,6 @@ class CopycatBot:
 
             if not config.VERBOSE_VALIDATION:
                 print(f"✓ Validation passed: {validation_result.reason}")
-
-            # Calculate position size
-            their_bet_usd = trade.size * trade.price
-            our_bet_usd = self.position_manager.calculate_position_size(
-                their_bet_usd,
-                self.target_net_worth
-            )
-
-            print(f"\n💰 Position Sizing:")
-            print(f"  Their bet: ${their_bet_usd:,.2f} ({their_bet_usd/self.target_net_worth*100:.2f}% of net worth)")
-            print(f"  Our bet: ${our_bet_usd:,.2f} ({our_bet_usd/self.position_manager.get_net_worth()*100:.2f}% of net worth)")
 
             # Execute order
             print(f"\n📤 Executing order...")

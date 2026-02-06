@@ -7,6 +7,7 @@ from datetime import datetime, timezone
 import requests
 
 import trader.config as config
+from trader.wallet_tracker import WalletTracker
 
 
 class Position:
@@ -28,7 +29,7 @@ class Position:
 class PositionManager:
     """Manages portfolio positions and net worth tracking"""
 
-    def __init__(self, wallet_address: Optional[str] = None):
+    def __init__(self, wallet_tracker: Optional[WalletTracker] = None, wallet_address: Optional[str] = None):
         """
         Initialize position manager
 
@@ -36,6 +37,7 @@ class PositionManager:
             wallet_address: Our wallet address (for dynamic bankroll mode)
         """
         self.wallet_address = wallet_address
+        self.wallet_tracker = wallet_tracker
         self.positions: Dict[str, Position] = {}  # condition_id -> Position
 
         # PnL tracking
@@ -71,10 +73,10 @@ class PositionManager:
         Returns:
             Total net worth in USD
         """
-        if config.BANKROLL_MODE == 'dynamic' and self.wallet_address:
-            # TODO: Query actual wallet balance from chain
-            # For now, use tracked value
-            return self.initial_capital + self.total_realized_pnl + self.total_unrealized_pnl
+        if config.BANKROLL_MODE == 'dynamic' and self.wallet_address and hasattr(self, "wallet_tracker"):
+            usdc_balance = self.wallet_tracker.get_usdc_balance(self.wallet_address)
+            positions = self.wallet_tracker.get_polymarket_positions_value(self.wallet_address)
+            return usdc_balance + positions
         else:
             # Fixed bankroll mode
             return self.initial_capital + self.total_realized_pnl + self.total_unrealized_pnl

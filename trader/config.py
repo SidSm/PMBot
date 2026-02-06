@@ -49,16 +49,16 @@ VALIDATION = {
     'min_liquidity_usd': 1000,
 
     # 2. Market closing time
-    'min_hours_until_close': 24,
+    'min_hours_until_close': 2,
 
     # 3. Volume check
-    'min_24h_volume_usd': 5000,
+    'min_24h_volume_usd': 1500,
 
     # 4. Spread check
     'max_spread_pct': 5,
 
     # 9. Trade age limit
-    'max_trade_age_seconds': 6000,
+    'max_trade_age_seconds': 60,
 
     # 11. Rate limiting
     'max_trades_per_hour': 10,
@@ -71,7 +71,7 @@ VALIDATION = {
     'max_drawdown_pct': 15,
 
     # 14. Minimum edge requirement
-    'min_edge_pct': 0,  # Price must be at least 1% better
+    'min_edge_pct': 1,  # Price must be at least 1% better
 
     # 15. Kelly criterion cap
     'max_kelly_fraction': 0.25,  # Max 25% of calculated Kelly
