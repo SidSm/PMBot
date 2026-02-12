@@ -42,12 +42,13 @@ PMBot has two modules:
 
 ### Trader — Copycat Bot
 
-- **Real-time monitoring** via WebSocket (with polling fallback)
-- **19-point trade validation** — liquidity, spread, volume, market close time, rate limits, and more
+- **Trade monitoring** — polls the target account's activity every few seconds
+- **14-point trade validation** — liquidity, spread, volume, market close time, rate limits, and more
 - **Risk management** — daily loss limits, drawdown circuit breakers, Kelly criterion sizing
-- **FOK order execution** with automatic retries
+- **GTC order execution** with automatic retries
+- **Latency tracking** — measures time from target's trade to your order execution
 - **Dry-run mode** for paper trading
-- **Telegram notifications** — trade alerts, rejections, errors, daily summaries
+- **Telegram notifications** — verbose trade alerts with all validation details, rejections with full failure breakdown, errors, daily summaries
 - **Dynamic or fixed bankroll** modes
 
 ---
@@ -179,7 +180,7 @@ PMBot/
 ├── trader/
 │   ├── main.py                # Bot entry point
 │   ├── copycat_bot.py         # Main orchestrator
-│   ├── websocket_monitor.py   # Real-time trade detection
+│   ├── websocket_monitor.py   # Trade polling & detection
 │   ├── order_executor.py      # CLOB order placement
 │   ├── position_manager.py    # Portfolio tracking
 │   ├── trade_validator.py     # 19-point validation

@@ -6,6 +6,8 @@ import sys
 import signal
 from typing import Optional
 import requests
+import time
+from datetime import datetime
 
 import trader.config as config
 from trader.websocket_monitor import TradeMonitor, TradeEvent
@@ -184,10 +186,13 @@ class CopycatBot:
         Args:
             trade: Trade event from target
         """
+        time_of_buy = datetime.fromtimestamp(trade.timestamp)
         print("\n" + "="*60)
         print(f"📊 TRADE DETECTED")
         print("="*60)
         print(f"Market: {trade.market_title}")
+        print(f"Time of the trade: {time_of_buy}")
+        print(f"Now:             : {datetime.fromtimestamp(time.time())}")
         print(f"Side: {trade.side}")
         print(f"Size: {trade.size} @ {trade.price}")
         print(f"Betting on outcome: {trade.outcome}")
@@ -218,21 +223,27 @@ class CopycatBot:
 
             if not validation_result.passed:
                 if not config.VERBOSE_VALIDATION:
-                    # Only print rejection if not already shown in summary
                     print(f"❌ Trade rejected: {validation_result.reason}")
 
                 self.notifier.notify_trade_rejected(
                     trade_info={
                         'market_title': trade.market_title,
                         'side': trade.side,
-                        'size': trade.size * trade.price
+                        'size': trade.size * trade.price,
+                        'price': trade.price,
+                        'outcome': trade.outcome,
                     },
-                    reason=validation_result.reason
+                    failures=validation_result.failures,
+                    trade_timestamp=trade.timestamp,
                 )
                 return
 
             if not config.VERBOSE_VALIDATION:
                 print(f"✓ Validation passed: {validation_result.reason}")
+
+            # Calculate time from target's trade to our execution
+            latency_s = time.time() - trade.timestamp
+            print(f"\n⏱️  Latency: {latency_s:.1f}s (target trade → our execution)")
 
             # Execute order
             print(f"\n📤 Executing order...")
@@ -259,7 +270,11 @@ class CopycatBot:
                     'order_id': execution_result.order_id
                 })
 
-                # Send notification
+                # Send notification with latency info
+                execution_result.details['latency_s'] = latency_s
+                execution_result.details['their_bet_usd'] = their_bet_usd
+                execution_result.details['our_bet_usd'] = our_bet_usd
+                execution_result.details['outcome'] = trade.outcome
                 self.notifier.notify_trade_executed(execution_result.details)
 
                 # Print updated stats

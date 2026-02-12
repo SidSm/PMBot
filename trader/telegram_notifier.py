@@ -25,10 +25,13 @@ class TelegramNotifier:
 
         if config.TELEGRAM_BOT_TOKEN and self.chat_id:
             try:
-                self.bot = Bot(token=config.TELEGRAM_BOT_TOKEN)
-                self._start_event_loop()
-                self.enabled = True
-                print("✓ Telegram notifications enabled")
+                if not config.ENABLE_TELEGRAM:
+                    print("x Telegram notifications disabled")
+                else:
+                    self.bot = Bot(token=config.TELEGRAM_BOT_TOKEN)
+                    self._start_event_loop()
+                    self.enabled = True
+                    print("✓ Telegram notifications enabled")
             except Exception as e:
                 print(f"⚠️  Telegram initialization failed: {e}")
         else:
@@ -56,7 +59,7 @@ class TelegramNotifier:
         Args:
             message: Message text to send
         """
-        if not self.enabled or not self.loop:
+        if not self.enabled or not self.loop or not config.ENABLE_TELEGRAM:
             return
 
         try:
@@ -88,48 +91,67 @@ class TelegramNotifier:
         Args:
             details: Trade execution details
         """
-        if not config.TELEGRAM['notify_trades']:
+        if not config.TELEGRAM['notify_trades'] or not config.ENABLE_TELEGRAM:
             return
 
         dry_run_tag = "🧪 DRY RUN" if details.get('dry_run') else "✅ LIVE"
         market_title = escape(details.get('market_title', 'Unknown')[:100])
+        latency = details.get('latency_s', 0)
+        their_bet = details.get('their_bet_usd', 0)
+        our_bet = details.get('our_bet_usd', 0)
+        outcome = escape(details.get('outcome', 'N/A') or 'N/A')
 
-        message = f"""
-{dry_run_tag} <b>Trade Executed</b>
+        message = f"""{dry_run_tag} <b>Trade Executed</b>
 
 <b>Market:</b> {market_title}
+<b>Outcome:</b> {outcome}
 <b>Side:</b> {details.get('side')}
-<b>Size:</b> ${details.get('size', 0):,.2f}
 <b>Price:</b> {details.get('price', 0):.4f}
 
-<b>Order ID:</b> <code>{details.get('order_id', 'N/A')}</code>
-"""
-        self.send_message(message.strip())
+<b>Their bet:</b> ${their_bet:,.2f}
+<b>Our bet:</b> ${our_bet:,.2f}
 
-    def notify_trade_rejected(self, trade_info: dict, reason: str):
+<b>Latency:</b> {latency:.1f}s
+<b>Order ID:</b> <code>{details.get('order_id', 'N/A')}</code>"""
+        self.send_message(message)
+
+    def notify_trade_rejected(self, trade_info: dict, failures: list, trade_timestamp: int = 0):
         """
-        Notify about rejected trade
+        Notify about rejected trade with all failure details
 
         Args:
             trade_info: Trade information
-            reason: Rejection reason
+            failures: List of failure reason strings
+            trade_timestamp: Unix timestamp of the target's trade
         """
-        if not config.TELEGRAM['notify_rejections']:
+        if not config.TELEGRAM['notify_rejections'] or not config.ENABLE_TELEGRAM:
             return
 
         market_title = escape(trade_info.get('market_title', 'Unknown')[:100])
-        reason_escaped = escape(reason)
+        outcome = escape(trade_info.get('outcome', 'N/A') or 'N/A')
 
-        message = f"""
-❌ <b>Trade Rejected</b>
+        # Calculate latency
+        latency_str = ""
+        if trade_timestamp > 0:
+            import time
+            latency = time.time() - trade_timestamp
+            latency_str = f"\n<b>Latency at rejection:</b> {latency:.1f}s"
+
+        # Format all failures
+        failures_text = ""
+        for f in failures:
+            failures_text += f"\n• {escape(f)}"
+
+        message = f"""❌ <b>Trade Rejected</b> ({len(failures)} check{'s' if len(failures) != 1 else ''} failed)
 
 <b>Market:</b> {market_title}
+<b>Outcome:</b> {outcome}
 <b>Side:</b> {trade_info.get('side')}
-<b>Size:</b> ${trade_info.get('size', 0):,.2f}
+<b>Price:</b> {trade_info.get('price', 0):.4f}
+<b>Size:</b> ${trade_info.get('size', 0):,.2f}{latency_str}
 
-<b>Reason:</b> {reason_escaped}
-"""
-        self.send_message(message.strip())
+<b>Failed checks:</b>{failures_text}"""
+        self.send_message(message)
 
     def notify_circuit_breaker(self, reason: str, stats: dict):
         """
@@ -139,7 +161,7 @@ class TelegramNotifier:
             reason: Circuit breaker reason
             stats: Current portfolio stats
         """
-        if not config.TELEGRAM['notify_circuit_breakers']:
+        if not config.TELEGRAM['notify_circuit_breakers'] or not config.ENABLE_TELEGRAM:
             return
 
         message = f"""
@@ -164,7 +186,7 @@ class TelegramNotifier:
         Args:
             error_msg: Error message
         """
-        if not config.TELEGRAM['notify_errors']:
+        if not config.TELEGRAM['notify_errors'] or not config.ENABLE_TELEGRAM:
             return
 
         message = f"""
@@ -181,7 +203,7 @@ class TelegramNotifier:
         Args:
             stats: Portfolio statistics
         """
-        if not config.TELEGRAM['notify_daily_summary']:
+        if not config.TELEGRAM['notify_daily_summary'] or not config.ENABLE_TELEGRAM:
             return
 
         message = f"""

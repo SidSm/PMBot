@@ -15,9 +15,10 @@ from trader.position_manager import PositionManager
 class ValidationResult:
     """Result of trade validation"""
 
-    def __init__(self, passed: bool, reason: str = ""):
+    def __init__(self, passed: bool, reason: str = "", failures: list = None):
         self.passed = passed
         self.reason = reason
+        self.failures = failures or []
 
     def __bool__(self):
         return self.passed
@@ -85,14 +86,16 @@ class TradeValidator:
         if config.VERBOSE_VALIDATION:
             self._print_validation_summary(results)
 
-        # Check if all passed
-        failed_checks = [label for label, result in results if not result.passed]
+        # Collect all failures
+        failures = [(label, result) for label, result in results if not result.passed]
 
-        if failed_checks:
-            # Return first failure
-            for label, result in results:
-                if not result.passed:
-                    return result
+        if failures:
+            failure_reasons = [f"{label}: {result.reason}" for label, result in failures]
+            return ValidationResult(
+                passed=False,
+                reason=failure_reasons[0],
+                failures=failure_reasons
+            )
 
         return ValidationResult(True, "All checks passed")
 
@@ -299,9 +302,9 @@ class TradeValidator:
         max_movement = config.POSITION_LIMITS['max_price_movement_pct']
 
         if price_change_pct > max_movement:
-            return ValidationResult(False, f"Price moved {price_change_pct:.1f}% (max {max_movement}%)")
+            return ValidationResult(False, f"Price moved {price_change_pct:.1f}% (max {max_movement}%) - now:{current_price} vs trade:{trade.price}")
 
-        return ValidationResult(True, f"Price movement: {price_change_pct:.1f}%")
+        return ValidationResult(True, f"Price movement: {price_change_pct:.1f}% - now:{current_price} vs trade:{trade.price}")
 
     def _get_market_data(self, condition_id: str) -> Optional[Dict]:
         """Fetch market data from Gamma API"""

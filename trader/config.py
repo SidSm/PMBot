@@ -20,14 +20,8 @@ POLYMARKET_CLOB_API = "https://clob.polymarket.com"
 POLYMARKET_DATA_API = "https://data-api.polymarket.com"
 POLYMARKET_GAMMA_API = "https://gamma-api.polymarket.com"
 
-# WebSocket Configuration
-POLYMARKET_WS_URL = "wss://ws-live-data.polymarket.com"
-WS_RECONNECT_DELAY = 5  # seconds
-WS_PING_INTERVAL = 30  # seconds
-
-# Polling Fallback Configuration
-POLLING_INTERVAL = 10  # seconds (if WebSocket fails)
-USE_WEBSOCKET = False  # Try WebSocket first
+# Polling Configuration
+POLLING_INTERVAL = 2  # seconds (used as primary interval in poll-only mode, 3x in hybrid mode)
 
 # Target Account Configuration
 TARGET_ACCOUNT = os.getenv('TARGET_ACCOUNT', '').lower()
@@ -52,13 +46,13 @@ VALIDATION = {
     'min_hours_until_close': 2,
 
     # 3. Volume check
-    'min_24h_volume_usd': 1500,
+    'min_24h_volume_usd': 500,
 
     # 4. Spread check
     'max_spread_pct': 5,
 
     # 9. Trade age limit
-    'max_trade_age_seconds': 60,
+    'max_trade_age_seconds': 20,
 
     # 11. Rate limiting
     'max_trades_per_hour': 10,
@@ -71,7 +65,7 @@ VALIDATION = {
     'max_drawdown_pct': 15,
 
     # 14. Minimum edge requirement
-    'min_edge_pct': 1,  # Price must be at least 1% better
+    'min_edge_pct': -10,  # Price must be at least 1% better
 
     # 15. Kelly criterion cap
     'max_kelly_fraction': 0.25,  # Max 25% of calculated Kelly
@@ -93,7 +87,7 @@ POSITION_LIMITS = {
     'min_bet_size_usd': 0.001,
     'max_bet_size_usd': 1000,
     'max_bet_pct_portfolio': 10,
-    'max_price_movement_pct': 5,
+    'max_price_movement_pct': 10,
 }
 
 # Execution Settings
@@ -112,6 +106,7 @@ TELEGRAM = {
     'notify_circuit_breakers': True,
     'notify_daily_summary': True,
 }
+ENABLE_TELEGRAM = True
 
 # Logging
 LOG_LEVEL = 'DEBUG'

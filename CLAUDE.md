@@ -7,23 +7,21 @@ Project context for AI-assisted development.
 PMBot is a Python toolkit for Polymarket prediction markets. Two modules:
 
 1. **`evaluator/`** — Scores trader accounts against 9 criteria (PnL, win rate, consistency, etc.) to find accounts worth copy-trading. No auth needed, uses public APIs.
-2. **`trader/`** — Copycat trading bot that monitors a target account via WebSocket and mirrors trades. Has a 19-point validation pipeline, risk management with circuit breakers, and Telegram notifications.
+2. **`trader/`** — Copycat trading bot that monitors a target account by polling the Data API and mirrors trades. Has a 14-point validation pipeline, risk management with circuit breakers, and Telegram notifications.
 
 ## Tech Stack
 
 - Python 3.12
 - `py-clob-client` — Polymarket CLOB trading API
 - `web3` — Ethereum/blockchain interaction
-- `websocket-client` — Real-time trade monitoring
 - `python-telegram-bot` — Notifications
 - `python-dotenv` — Environment config
 
 ## Key APIs
 
-- Data API: `https://data-api.polymarket.com` (public trade/position data)
+- Data API: `https://data-api.polymarket.com` (public trade/position data, polling)
 - Gamma API: `https://gamma-api.polymarket.com` (market metadata)
 - CLOB API: `https://clob.polymarket.com` (order placement, authenticated)
-- WebSocket: `wss://ws-live-data.polymarket.com` (live trade feed)
 
 ## Running
 
@@ -47,7 +45,8 @@ python trader/main.py
 - Trader pipeline: `main.py` → `CopycatBot` → `TradeMonitor` → `TradeValidator` → `OrderExecutor`
 - Risk management is handled by `RiskManager` (circuit breakers for daily loss and drawdown)
 - `PositionManager` tracks portfolio state and calculates net worth from on-chain data
-- WebSocket monitor has a polling fallback if the connection drops
+- Trade detection uses polling (CLOB WebSocket can't monitor other users' trades)
+- `websocket_monitor.py` is named historically — it's pure polling now
 
 ## Conventions
 
